@@ -107,4 +107,8 @@ impl Client for X11Client {
         }
         Some(wm_class)
     }
+
+    fn current_window(&mut self) -> Option<String> {
+        None
+    }
 }

@@ -1,6 +1,6 @@
 use crate::client::{build_client, WMClient};
 use crate::config::action::Action;
-use crate::config::application::Application;
+use crate::config::application::OnlyOrNot;
 use crate::config::key_action::KeyAction;
 use crate::config::key_press::{KeyPress, Modifier, ModifierState};
 use crate::config::keymap::expand_modifiers;
@@ -30,6 +30,7 @@ pub struct EventHandler {
     // Check the currently active application
     application_client: WMClient,
     application_cache: Option<String>,
+    window_cache: Option<String>,
     // State machine for multi-purpose keys
     multi_purpose_keys: HashMap<Key, MultiPurposeKeyState>,
     // Current nested remaps
@@ -57,6 +58,7 @@ impl EventHandler {
             pressed_keys: HashMap::new(),
             application_client: build_client(),
             application_cache: None,
+            window_cache: None,
             multi_purpose_keys: HashMap::new(),
             override_remap: None,
             override_timeout_key: None,
@@ -69,7 +71,10 @@ impl EventHandler {
 
     // Handle EventType::KEY
     pub fn on_event(&mut self, event: InputEvent, config: &Config) -> Result<(), Box<dyn Error>> {
-        self.application_cache = None; // expire cache
+        // expire cache
+        self.application_cache = None;
+        self.window_cache = None;
+
         let key = Key::new(event.code());
         debug!("=> {}: {:?}", event.value(), &key);
 
@@ -236,6 +241,11 @@ impl EventHandler {
             if let Some(actions) = keymap.remap.get(&key_press) {
                 if let Some(application_matcher) = &keymap.application {
                     if !self.match_application(application_matcher) {
+                        continue;
+                    }
+                }
+                if let Some(window_matcher) = &keymap.window {
+                    if !self.match_window(window_matcher) {
                         continue;
                     }
                 }
@@ -413,7 +423,7 @@ impl EventHandler {
         }
     }
 
-    fn match_application(&mut self, application_matcher: &Application) -> bool {
+    fn match_application(&mut self, application_matcher: &OnlyOrNot) -> bool {
         // Lazily fill the wm_class cache
         if self.application_cache.is_none() {
             match self.application_client.current_application() {
@@ -428,6 +438,26 @@ impl EventHandler {
             }
             if let Some(application_not) = &application_matcher.not {
                 return !application_not.contains(application);
+            }
+        }
+        false
+    }
+
+    fn match_window(&mut self, window_matcher: &OnlyOrNot) -> bool {
+        // Lazily fill the wm_class cache
+        if self.window_cache.is_none() {
+            match self.application_client.current_window() {
+                Some(window) => self.window_cache = Some(window),
+                None => self.window_cache = Some(String::new()),
+            }
+        }
+
+        if let Some(window) = &self.window_cache {
+            if let Some(window_only) = &window_matcher.only {
+                return window_only.contains(window);
+            }
+            if let Some(window_not) = &window_matcher.not {
+                return !window_not.contains(window);
             }
         }
         false

@@ -139,6 +139,24 @@ fn test_keymap_mark() {
     "})
 }
 
+#[test]
+fn test_window() {
+    assert_parse(indoc! {"
+    modmap:
+      - remap:
+          Alt_L: Ctrl_L
+        window:
+          not:
+            - Gnome-terminal
+    keymap:
+      - remap:
+          Alt-S: Ctrl-S
+        application:
+          only:
+            - Gnome-terminal
+    "})
+}
+
 fn assert_parse(yaml: &str) {
     let result: Result<Config, Error> = serde_yaml::from_str(yaml);
     if let Err(e) = result {

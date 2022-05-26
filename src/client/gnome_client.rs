@@ -59,6 +59,28 @@ impl Client for GnomeClient {
         }
         None
     }
+
+    fn current_window(&mut self) -> Option<String> {
+        self.connect();
+        let connection = match &mut self.connection {
+            Some(connection) => connection,
+            None => return None,
+        };
+        if let Ok(message) = connection.call_method(
+            Some("org.gnome.Shell"),
+            "/com/k0kubun/Xremap",
+            Some("com.k0kubun.Xremap"),
+            "ActiveWindow",
+            &(),
+        ) {
+            if let Ok(json) = message.body::<String>() {
+                if let Ok(window) = serde_json::from_str::<ActiveWindow>(&json) {
+                    return Some(window.title);
+                }
+            }
+        }
+        None
+    }
 }
 
 #[derive(Serialize, Deserialize)]

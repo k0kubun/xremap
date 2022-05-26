@@ -59,6 +59,10 @@ impl Client for SwayClient {
         }
         None
     }
+
+    fn current_window(&mut self) -> Option<String> {
+        None
+    }
 }
 
 // e.g. "/run/user/1000/sway-ipc.1000.2575.sock"

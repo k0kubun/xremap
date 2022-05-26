@@ -10,4 +10,8 @@ impl Client for NullClient {
     fn current_application(&mut self) -> Option<String> {
         None
     }
+
+    fn current_window(&mut self) -> Option<String> {
+        None
+    }
 }
