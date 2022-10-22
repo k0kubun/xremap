@@ -1,6 +1,12 @@
 extern crate evdev;
 extern crate nix;
 
+use anyhow::bail;
+use derive_where::derive_where;
+use evdev::uinput::{VirtualDevice, VirtualDeviceBuilder};
+use evdev::{AttributeSet, BusType, Device, FetchEventsSynced, InputId, Key, RelativeAxisType};
+use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
+
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::read_dir;
@@ -65,7 +71,7 @@ static TABLET_BTNS: [Key; 17] = [
 ];
 
 // Credit: https://github.com/mooz/xkeysnail/blob/bf3c93b4fe6efd42893db4e6588e5ef1c4909cfb/xkeysnail/output.py#L10-L32
-pub fn output_device() -> Result<VirtualDevice, Box<dyn Error>> {
+pub fn output_device(bus_type: Option<BusType>) -> Result<VirtualDevice, Box<dyn Error>> {
     let mut keys: AttributeSet<Key> = AttributeSet::new();
     for code in Key::KEY_RESERVED.code()..Key::BTN_TRIGGER_HAPPY40.code() {
         let key = Key::new(code);
@@ -84,6 +90,8 @@ pub fn output_device() -> Result<VirtualDevice, Box<dyn Error>> {
     relative_axes.insert(RelativeAxisType::REL_MISC);
 
     let device = VirtualDeviceBuilder::new()?
+        // These are taken from https://docs.rs/evdev/0.12.0/src/evdev/uinput.rs.html#183-188
+        .input_id(InputId::new(bus_type.unwrap_or(BusType::BUS_USB), 0x1234, 0x5678, 0x111))
         .name(&InputDevice::current_name())
         .with_keys(&keys)?
         .with_relative_axes(&relative_axes)?
@@ -260,6 +268,10 @@ impl InputDevice {
 
     fn device_name(&self) -> &str {
         self.device.name().unwrap_or("<Unnamed device>")
+    }
+
+    pub fn bus_type(&self) -> BusType {
+        self.device.input_id().bus_type()
     }
 }
 

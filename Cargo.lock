@@ -1157,7 +1157,7 @@ dependencies = [
 
 [[package]]
 name = "xremap"
-version = "0.7.6"
+version = "0.7.8"
 dependencies = [
  "anyhow",
  "clap",

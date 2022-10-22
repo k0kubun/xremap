@@ -294,7 +294,8 @@ impl EventHandler {
                 }
             }
         } else {
-            self.timeout_override(device)?;
+            // An override remap is set but not used. Flush the pending key.
+            self.timeout_overridedevice
         }
         if let Some(entries) = config.keymap_table.get(key) {
             for exact_match in [true, false] {

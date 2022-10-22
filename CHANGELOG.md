@@ -1,3 +1,11 @@
+## v0.7.8
+
+- Fix libinput disable-while-typing support [#152](https://github.com/k0kubun/xremap/issues/152)
+
+## v0.7.7
+
+- Flush pending keys with an override remap correctly [#154](https://github.com/k0kubun/xremap/issues/154)
+
 ## v0.7.6
 
 - Add `keypress_delay_ms` to workaround [#179](https://github.com/k0kubun/xremap/issues/179)
