@@ -195,6 +195,35 @@ fn test_keymap_mark() {
     "})
 }
 
+#[test]
+fn test_absolute_conf() {
+    assert_parse(indoc! {"
+    absolute:
+      x:
+        value: 0
+        min: 0
+        max: 33020
+        fuzz: 0
+        flat: 0
+        resolution: 200
+      y:
+        min: 0
+        max: 20320
+        resolution: 200
+      pressure:
+        min: 0
+        max: 8191
+      tilt_x:
+        min: -60
+        max: 60
+        resolution: 57
+      tilt_y:
+        min: -60
+        max: 60
+        resolution: 57
+    "})
+}
+
 fn assert_parse(yaml: &str) {
     let result: Result<Config, Error> = serde_yaml::from_str(yaml);
     if let Err(e) = result {

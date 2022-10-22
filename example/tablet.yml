@@ -1,0 +1,72 @@
+# Absolute config section for tablet devices or touchscreens.
+# Missing fields default to 0,
+# so you don't have to set them if the desired value is 0
+absolute:
+
+  # Below is an example config for a GAOMON S620.
+  # x and y decide what area of your tablet is mapped
+  x:
+    value: 0
+    min: 0
+    max: 33020
+    fuzz: 0
+    flat: 0
+    resolution: 200
+  y:
+    min: 0
+    max: 20320
+    resolution: 200
+
+  # pressure, x_tilt and y_tilt are pen properties.
+  pressure:
+    min: 0
+    max: 8191
+  tilt_x:
+    min: -60
+    max: 60
+    resolution: 57
+  tilt_y:
+    min: -60
+    max: 60
+    resolution: 57
+
+keymap:
+  - name: Xournalpp
+    application:
+      only: Xournalpp
+    remap:
+      Btn_0: CTRL_L-KEY_Z
+      Btn_1: CTRL_L-KEY_Y
+
+modmap:
+  - name: Xournalpprest
+    application:
+      only: Xournalpp
+    remap:
+      # Mappings for using some tools while holding down a button and switch back to pen mode afterwards.
+      Btn_2:
+        press: { with_mark: CTRL_L-Shift-v }
+        release: { with_mark: CTRL_L-Shift-p }
+      Btn_3:
+        press: { with_mark: CTRL_L-Shift-G }
+        release: { with_mark: CTRL_L-Shift-p }
+      # map keys to pen actions, haven't found a use for it yet as you need to send a pressure event for it to have useful effect
+      z: BTN_TOUCH
+      x: BTN_TOOL_PEN
+
+    targets:
+      # If you have buttons on your tablet device and want to send mapped keys to the virtual keyboard then specify it like so
+      Btn_2: Other
+      Btn_3: Other
+
+      # If you want to do the reverse: makes the mapped keys go to the virtual tablet device.
+      z: Tablet
+      x: Tablet
+
+  - name: five
+    remap:
+      Btn_tool_pen:
+        press: { with_mark: key_5 }
+        release: { with_mark: enter }
+    targets:
+      Btn_tool_pen: Other

@@ -179,7 +179,6 @@ keymap:
       Super-d: M-d
       Super-i: M-i
       Super-w: M-w
-      Super-w: M-w
       Super-t: M-t
       Super-c: M-c
       Super-v: M-v

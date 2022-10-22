@@ -2,6 +2,7 @@ use crate::config::action::{Action, Actions};
 use crate::config::application::deserialize_string_or_vec;
 use crate::config::application::Application;
 use crate::config::key_press::KeyPress;
+use crate::DeviceType;
 use evdev::Key;
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
@@ -19,6 +20,8 @@ pub struct Keymap {
     pub application: Option<Application>,
     #[serde(default, deserialize_with = "deserialize_string_or_vec")]
     pub mode: Option<Vec<String>>,
+    #[serde(default = "HashMap::new")]
+    pub targets: HashMap<KeyPress, DeviceType>,
 }
 
 fn deserialize_remap<'de, D>(deserializer: D) -> Result<HashMap<KeyPress, Vec<Action>>, D::Error>
@@ -39,6 +42,7 @@ pub struct KeymapEntry {
     pub modifiers: Vec<Modifier>,
     pub application: Option<Application>,
     pub mode: Option<Vec<String>>,
+    pub targets: Option<DeviceType>,
 }
 
 // Convert an array of keymaps to a single hashmap whose key is a triggering key.
@@ -55,11 +59,18 @@ pub fn build_keymap_table(keymaps: &Vec<Keymap>) -> HashMap<Key, Vec<KeymapEntry
                 Some(entries) => entries.to_vec(),
                 None => vec![],
             };
+
+            let target = if let Some(target) = keymap.targets.get(key_press) {
+                Some(*target)
+            } else {
+                None
+            };
             entries.push(KeymapEntry {
                 actions: actions.to_vec(),
                 modifiers: key_press.modifiers.clone(),
                 application: keymap.application.clone(),
                 mode: keymap.mode.clone(),
+                targets: target,
             });
             table.insert(key_press.key, entries);
         }

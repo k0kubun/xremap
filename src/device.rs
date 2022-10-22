@@ -6,6 +6,7 @@ use derive_where::derive_where;
 use evdev::uinput::{VirtualDevice, VirtualDeviceBuilder};
 use evdev::{AttributeSet, BusType, Device, FetchEventsSynced, InputId, Key, RelativeAxisType};
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
+
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::read_dir;
@@ -13,6 +14,18 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::prelude::AsRawFd;
 use std::path::PathBuf;
 use std::{io, process};
+
+use anyhow::bail;
+use derive_where::derive_where;
+use evdev::uinput::{VirtualDevice, VirtualDeviceBuilder};
+use evdev::{
+    AbsoluteAxisType, AttributeSet, AttributeSetRef, Device, FetchEventsSynced, Key, MiscType, PropType,
+    RelativeAxisType, UinputAbsSetup,
+};
+use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
+use serde::Deserialize;
+
+use crate::config::absconfig::AbsConfig;
 
 static MOUSE_BTNS: [&str; 20] = [
     "BTN_MISC",
@@ -37,13 +50,34 @@ static MOUSE_BTNS: [&str; 20] = [
     "BTN_TASK",
 ];
 
+static TABLET_BTNS: [Key; 17] = [
+    Key::BTN_TOOL_PEN,
+    Key::BTN_TOOL_AIRBRUSH,
+    Key::BTN_TOOL_BRUSH,
+    Key::BTN_TOOL_PENCIL,
+    Key::BTN_TOUCH,
+    Key::BTN_STYLUS,
+    Key::BTN_STYLUS2,
+    Key::BTN_0,
+    Key::BTN_1,
+    Key::BTN_2,
+    Key::BTN_3,
+    Key::BTN_4,
+    Key::BTN_5,
+    Key::BTN_6,
+    Key::BTN_7,
+    Key::BTN_8,
+    Key::BTN_9,
+];
+
 // Credit: https://github.com/mooz/xkeysnail/blob/bf3c93b4fe6efd42893db4e6588e5ef1c4909cfb/xkeysnail/output.py#L10-L32
 pub fn output_device(bus_type: Option<BusType>) -> Result<VirtualDevice, Box<dyn Error>> {
     let mut keys: AttributeSet<Key> = AttributeSet::new();
     for code in Key::KEY_RESERVED.code()..Key::BTN_TRIGGER_HAPPY40.code() {
         let key = Key::new(code);
         let name = format!("{:?}", key);
-        if name.starts_with("KEY_") || MOUSE_BTNS.contains(&&*name) {
+        let heap_name = name.as_str();
+        if name.starts_with("KEY_") || MOUSE_BTNS.contains(&heap_name) || TABLET_BTNS.contains(&key) {
             keys.insert(key);
         }
     }
@@ -61,6 +95,43 @@ pub fn output_device(bus_type: Option<BusType>) -> Result<VirtualDevice, Box<dyn
         .name(&InputDevice::current_name())
         .with_keys(&keys)?
         .with_relative_axes(&relative_axes)?
+        .build()?;
+    Ok(device)
+}
+
+pub fn tablet_device(abs_config: &AbsConfig) -> Result<VirtualDevice, Box<dyn Error>> {
+    let mut keys: AttributeSet<Key> = AttributeSet::new();
+    for code in Key::KEY_RESERVED.code()..Key::BTN_TRIGGER_HAPPY40.code() {
+        let key = Key::new(code);
+        let name = format!("{:?}", key);
+        let heap_name = name.as_str();
+        if TABLET_BTNS.contains(&key) {
+            keys.insert(key);
+        }
+    }
+
+    let mut props: AttributeSet<PropType> = AttributeSet::new();
+    props.insert(PropType::POINTER);
+
+    let mut msc: AttributeSet<MiscType> = AttributeSet::new();
+    msc.insert(MiscType::MSC_SCAN);
+
+    let x = UinputAbsSetup::new(AbsoluteAxisType::ABS_X, abs_config.x.into_evdev_abs_info());
+    let x_tilt = UinputAbsSetup::new(AbsoluteAxisType::ABS_TILT_X, abs_config.tilt_x.into_evdev_abs_info());
+    let y = UinputAbsSetup::new(AbsoluteAxisType::ABS_Y, abs_config.y.into_evdev_abs_info());
+    let y_tilt = UinputAbsSetup::new(AbsoluteAxisType::ABS_TILT_Y, abs_config.tilt_y.into_evdev_abs_info());
+    let pressure = UinputAbsSetup::new(AbsoluteAxisType::ABS_PRESSURE, abs_config.pressure.into_evdev_abs_info());
+
+    let device = VirtualDeviceBuilder::new()?
+        .name(&InputDevice::current_name_tablet())
+        .with_keys(&keys)?
+        .with_absolute_axis(&x)?
+        .with_absolute_axis(&y)?
+        .with_absolute_axis(&x_tilt)?
+        .with_absolute_axis(&y_tilt)?
+        .with_absolute_axis(&pressure)?
+        .with_properties(&*props)?
+        .with_msc(&*msc)?
         .build()?;
     Ok(device)
 }
@@ -127,6 +198,12 @@ pub fn get_input_devices(
     println!("{}", SEPARATOR);
 
     Ok(devices.into_iter().map(From::from).collect())
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub enum DeviceType {
+    Tablet,
+    Other,
 }
 
 #[derive_where(PartialEq, PartialOrd, Ord)]
@@ -200,7 +277,7 @@ impl InputDevice {
 
 impl InputDevice {
     pub fn is_input_device(&self, device_filter: &[String], ignore_filter: &[String], mouse: bool) -> bool {
-        if self.device_name() == Self::current_name() {
+        if self.device_name() == Self::current_name() || self.device_name() == Self::current_name_tablet() {
             return false;
         }
         (if device_filter.is_empty() {
@@ -220,6 +297,10 @@ impl InputDevice {
 
     fn current_name() -> String {
         format!("xremap pid={}", process::id())
+    }
+
+    fn current_name_tablet() -> String {
+        format!("xremap tablet pid={}", process::id())
     }
 
     fn matches(&self, filter: &[String]) -> bool {
@@ -261,6 +342,20 @@ impl InputDevice {
             }
             None => false,
         }
+    }
+
+    // https://docs.kernel.org/input/event-codes.html?highlight=event+types#tablets
+    pub(crate) fn is_tablet(&self) -> bool {
+        let has_tablet_axes = match self.device.supported_absolute_axes() {
+            Some(axes) => axes.contains(AbsoluteAxisType::ABS_Y) && axes.contains(AbsoluteAxisType::ABS_X),
+            None => false,
+        };
+
+        has_tablet_axes
+            && match self.device.supported_keys() {
+                Some(keys) => keys.contains(Key::BTN_TOOL_PEN) && keys.contains(Key::BTN_TOUCH),
+                None => false,
+            }
     }
 
     fn is_mouse(&self) -> bool {

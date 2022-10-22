@@ -1,3 +1,22 @@
+extern crate serde_yaml;
+
+use std::{collections::HashMap, error, fs, path::Path, time::SystemTime};
+
+use evdev::Key;
+use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
+use serde::{Deserialize, Deserializer};
+
+use keymap::Keymap;
+use modmap::Modmap;
+
+use crate::config::absconfig::AbsConfig;
+
+use self::{
+    key::parse_key,
+    keymap::{build_keymap_table, KeymapEntry},
+};
+
+pub mod absconfig;
 pub mod action;
 pub mod application;
 mod key;
@@ -9,20 +28,6 @@ mod modmap;
 pub mod remap;
 #[cfg(test)]
 mod tests;
-
-extern crate serde_yaml;
-
-use evdev::Key;
-use keymap::Keymap;
-use modmap::Modmap;
-use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
-use serde::{Deserialize, Deserializer};
-use std::{collections::HashMap, error, fs, path::Path, time::SystemTime};
-
-use self::{
-    key::parse_key,
-    keymap::{build_keymap_table, KeymapEntry},
-};
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -38,6 +43,8 @@ pub struct Config {
     pub virtual_modifiers: Vec<Key>,
     #[serde(default)]
     pub keypress_delay_ms: u64,
+    #[serde(default = "AbsConfig::new")]
+    pub absolute: AbsConfig,
 
     // Internals
     #[serde(skip)]

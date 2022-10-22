@@ -1,22 +1,25 @@
-use crate::config::Config;
-use crate::device::{device_watcher, get_input_devices, output_device};
-use crate::event_handler::EventHandler;
-use anyhow::{anyhow, bail, Context};
-use clap::{AppSettings, ArgEnum, IntoApp, Parser};
-use clap_complete::Shell;
-use config::{config_watcher, load_config};
-use device::InputDevice;
-use evdev::EventType;
-use nix::libc::ENODEV;
-use nix::sys::inotify::{AddWatchFlags, Inotify, InotifyEvent};
-use nix::sys::select::select;
-use nix::sys::select::FdSet;
-use nix::sys::timerfd::{ClockId, TimerFd, TimerFlags};
 use std::collections::HashMap;
 use std::io::stdout;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+
+use anyhow::{anyhow, bail, Context};
+use clap::{AppSettings, ArgEnum, IntoApp, Parser};
+use clap_complete::Shell;
+use evdev::{EventType, InputEvent};
+use nix::libc::ENODEV;
+use nix::sys::inotify::{AddWatchFlags, Inotify, InotifyEvent};
+use nix::sys::select::select;
+use nix::sys::select::FdSet;
+use nix::sys::timerfd::{ClockId, TimerFd, TimerFlags};
+
+use config::{config_watcher, load_config};
+use device::InputDevice;
+
+use crate::config::Config;
+use crate::device::{device_watcher, get_input_devices, output_device, tablet_device, DeviceType};
+use crate::event_handler::EventHandler;
 
 mod client;
 mod config;
@@ -105,9 +108,19 @@ fn main() -> anyhow::Result<()> {
     let watch_config = watch.contains(&WatchTargets::Config);
 
     // Event listeners
+    let output_device = match output_device() {
+        Ok(output_device) => output_device,
+        Err(e) => bail!("Failed to prepare an output device: {}", e),
+    };
+    let tablet_device = match tablet_device(&config.absolute) {
+        Ok(output_device) => output_device,
+        Err(e) => bail!("Failed to prepare a tablet device: {}", e),
+    };
+
     let timer = TimerFd::new(ClockId::CLOCK_MONOTONIC, TimerFlags::empty())?;
     let timer_fd = timer.as_raw_fd();
     let delay = Duration::from_millis(config.keypress_delay_ms);
+
     let mut input_devices = match get_input_devices(&device_filter, &ignore_filter, mouse, watch_devices) {
         Ok(input_devices) => input_devices,
         Err(e) => bail!("Failed to prepare input devices: {}", e),
@@ -119,14 +132,14 @@ fn main() -> anyhow::Result<()> {
         Ok(output_device) => output_device,
         Err(e) => bail!("Failed to prepare an output device: {}", e),
     };
-    let mut handler = EventHandler::new(output_device, timer, &config.default_mode, delay);
+    let mut handler = EventHandler::new(output_device, tablet_device, timer, &config.default_mode, delay);
 
     // Main loop
     loop {
         match 'event_loop: loop {
             let readable_fds = select_readable(input_devices.values(), &watchers, timer_fd)?;
             if readable_fds.contains(timer_fd) {
-                if let Err(error) = handler.timeout_override() {
+                if let Err(error) = handler.timeout_override(DeviceType::Other) {
                     println!("Error on remap timeout: {error}")
                 }
             }
@@ -204,6 +217,11 @@ fn handle_input_events(
     handler: &mut EventHandler,
     config: &mut Config,
 ) -> anyhow::Result<bool> {
+    let is_tablet = input_device.is_tablet();
+    let device_type = DeviceType::Other;
+    if is_tablet {
+        return handle_tablet_input_events(input_device, handler, config);
+    }
     match input_device.fetch_events().map_err(|e| (e.raw_os_error(), e)) {
         Err((Some(ENODEV), _)) => Ok(false),
         Err((_, error)) => Err(error).context("Error fetching input events"),
@@ -211,11 +229,56 @@ fn handle_input_events(
             for event in events {
                 if event.event_type() == EventType::KEY {
                     handler
-                        .on_event(event, config)
+                        .on_event(device_type, event, config)
                         .map_err(|e| anyhow!("Failed handling {event:?}:\n  {e:?}"))?;
                 } else {
-                    handler.send_event(event)?;
+                    handler.send_event(device_type, event)?;
                 }
+            }
+
+            Ok(true)
+        }
+    }
+}
+
+fn handle_tablet_input_events(
+    input_device: &mut InputDevice,
+    handler: &mut EventHandler,
+    config: &mut Config,
+) -> anyhow::Result<bool> {
+    let mut vec: Vec<InputEvent> = Vec::new();
+    let device_type = DeviceType::Tablet;
+    match input_device.fetch_events().map_err(|e| (e.raw_os_error(), e)) {
+        Err((Some(ENODEV), _)) => Ok(false),
+        Err((_, error)) => Err(error).context("Error fetching input events"),
+        Ok(events) => {
+            for event in events {
+                if event.event_type() == EventType::KEY {
+                    // some pen buttons need to be sent in bulk after the msc events
+                    // or software could misinterpret them.
+                    // but remapping is still useful for potential tablet buttons/keys
+                    // if event.value() != 1 || config.absolute.remap_pen_buttons {
+                    if !vec.is_empty() {
+                        handler.send_bulk_events(device_type, vec.clone())?;
+                        vec.clear();
+                    }
+
+                    handler
+                        .on_event(device_type, event, config)
+                        .map_err(|e| anyhow!("Failed handling {event:?}:\n  {e:?}"))?;
+                    // } else {
+                    //     vec.push(event);
+                    // }
+                } else if EventType::SYNCHRONIZATION == event.event_type() {
+                    vec.push(event);
+                    handler.send_bulk_events(device_type, vec.clone())?;
+                    vec.clear();
+                } else {
+                    vec.push(event);
+                }
+            }
+            if !vec.is_empty() {
+                handler.send_bulk_events(device_type, vec)?;
             }
             Ok(true)
         }
