@@ -29,3 +29,44 @@ absolute:
     min: -60
     max: 60
     resolution: 57
+
+keymap:
+  - name: Xournalpp
+    application:
+      only: Xournalpp
+    remap:
+      Btn_0: CTRL_L-KEY_Z
+      Btn_1: CTRL_L-KEY_Y
+
+modmap:
+  - name: Xournalpprest
+    application:
+      only: Xournalpp
+    remap:
+      # Mappings for using some tools while holding down a button and switch back to pen mode afterwards.
+      Btn_2:
+        press: { with_mark: CTRL_L-Shift-v }
+        release: { with_mark: CTRL_L-Shift-p }
+      Btn_3:
+        press: { with_mark: CTRL_L-Shift-G }
+        release: { with_mark: CTRL_L-Shift-p }
+      # map keys to pen actions, haven't found a use for it yet as you need to send a pressure event for it to have useful effect
+      z: BTN_TOUCH
+      x: BTN_TOOL_PEN
+
+    targets:
+      # If you have buttons on your tablet device and want to send mapped keys to the virtual keyboard then specify it like so
+      Btn_2: Other
+      Btn_3: Other
+
+      # If you want to do the reverse: makes the mapped keys go to the virtual tablet device.
+      z: Tablet
+      x: Tablet
+
+  - name: five
+    remap:
+      Btn_tool_pen:
+        press: { with_mark: key_5 }
+        release: { with_mark: enter }
+    targets:
+      Btn_tool_pen: Other
